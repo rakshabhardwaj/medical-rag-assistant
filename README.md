@@ -1,60 +1,121 @@
-# Medical RAG Assistant
+<div align="center">
 
-A chat assistant that answers medical questions using only the contents of a medical reference book (PDF). Instead of relying on an LLM's general knowledge, it retrieves the most relevant passages from the book first and then generates an answer from them. If the book doesn't cover the question, it says so.
+# 🩺 Medical RAG Assistant
 
-<!-- Add a screenshot: save it as screenshot.png in this folder, then uncomment the next line -->
-<!-- ![Screenshot](screenshot.png) -->
+**Ask a medical question. Get an answer grounded in your own reference book, not the model's guesswork.**
+
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-backend-000000?logo=flask&logoColor=white)
+![Pinecone](https://img.shields.io/badge/Pinecone-vector%20DB-0E6B73)
+![Groq](https://img.shields.io/badge/Groq-inference-F55036)
+![HuggingFace](https://img.shields.io/badge/all--MiniLM--L6--v2-embeddings-FFD21E?logo=huggingface&logoColor=black)
+
+<!-- Save a screenshot of the chat as screenshot.png in the repo root, then remove the two comment markers below -->
+<!-- <img src="screenshot.png" alt="Medical RAG Assistant screenshot" width="760"> -->
+
+</div>
+
+---
+
+## Why this exists
+
+General-purpose LLMs can hallucinate or miss domain detail when asked medical questions. This project uses **Retrieval-Augmented Generation (RAG)**: it first finds the exact passages in a 600+ page medical book that relate to your question, then asks the LLM to answer *only* from those passages. If the book doesn't cover it, the assistant says so.
+
+## Features
+
+- **Grounded answers.** Responses are built from retrieved book passages, with instructions to refuse when the context doesn't contain the answer.
+- **Fast.** Semantic search in Pinecone plus Groq inference keeps responses quick.
+- **Clean reading UI.** Document-style answers, suggested starter questions, a thinking indicator, copy button, and automatic light/dark mode.
+- **Keys stay private.** Secrets load from a `.env` file that is never committed.
 
 ## How it works
 
-1. **PDF extraction:** PyMuPDF pulls the text out of the PDF (`pdf_reader.py`).
-2. **Chunking:** LangChain's `RecursiveCharacterTextSplitter` splits the text into 1000-character chunks with 200 overlap.
-3. **Embeddings:** each chunk is converted to a 384-dimension vector with `all-MiniLM-L6-v2` (Hugging Face, via sentence-transformers).
-4. **Vector search:** vectors are stored in Pinecone (`upload.py`). At question time, the 4 most similar chunks are retrieved.
-5. **Answer generation:** the retrieved chunks and the question are sent to Groq (`openai/gpt-oss-120b`) with instructions to answer only from that context.
-6. **Interface:** a Flask backend (`app.py`) serves a single-page chat UI (`templates/index.html`).
+```mermaid
+flowchart LR
+    A[Medical PDF] -->|PyMuPDF| B[Raw text]
+    B -->|RecursiveCharacterTextSplitter<br/>1000 chars, 200 overlap| C[Chunks]
+    C -->|all-MiniLM-L6-v2| D[384-dim vectors]
+    D --> E[(Pinecone index)]
+    Q[User question] -->|same embedding model| F[Query vector]
+    F -->|top-4 similarity search| E
+    E --> G[Relevant passages]
+    G --> H[Groq LLM<br/>gpt-oss-120b]
+    Q --> H
+    H --> I[Grounded answer]
+```
 
-## Tech stack
+**Two phases:**
 
-Python, Flask, PyMuPDF, LangChain text splitters, sentence-transformers, Pinecone, Groq
+1. **Ingestion (run once):** extract text, split it into overlapping chunks, embed each chunk, and store the vectors in Pinecone.
+2. **Query (every question):** embed the question, retrieve the 4 closest chunks, and have the LLM answer from that context only.
 
-## Setup
+## Project structure
 
-1. Clone the repo and create a virtual environment:
+```
+medical-rag-assistant/
+├── pdf_reader.py        # PDF -> medical_text.txt (PyMuPDF)
+├── ingest.py            # chunking sanity check
+├── upload.py            # embed chunks and upload to Pinecone
+├── app.py               # Flask server: retrieval + generation
+├── templates/
+│   └── index.html       # chat interface
+├── requirements.txt
+└── .env.example         # copy to .env and add your keys
+```
 
-   ```
-   git clone https://github.com/rakshabhardwaj/medical-rag-assistant.git
-   cd medical-rag-assistant
-   python -m venv venv
-   venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+## Quick start
 
-2. Create a `.env` file (see `.env.example`) with your keys:
+**1. Clone and install**
 
-   ```
-   PINECONE_API_KEY=your-pinecone-key
-   GROQ_API_KEY=your-groq-key
-   ```
+```bash
+git clone https://github.com/rakshabhardwaj/medical-rag-assistant.git
+cd medical-rag-assistant
+python -m venv venv
+venv\Scripts\activate        # Windows
+pip install -r requirements.txt
+```
 
-3. Put your PDF at `uploads/Medical_book.pdf`.
+**2. Add your keys.** Copy `.env.example` to `.env` and fill it in (no quotes):
 
-4. Extract the text, then upload it to Pinecone (one time only):
+```
+PINECONE_API_KEY=your-pinecone-key
+GROQ_API_KEY=your-groq-key
+```
 
-   ```
-   python pdf_reader.py
-   python upload.py
-   ```
+**3. Add your book.** Put a PDF at `uploads/Medical_book.pdf`.
 
-5. Start the app and open http://127.0.0.1:5000:
+**4. Ingest (one time)**
 
-   ```
-   python app.py
-   ```
+```bash
+python pdf_reader.py    # extract text
+python upload.py        # embed and upload to Pinecone
+```
 
-## Notes
+**5. Run**
 
-- If the PDF is scanned (no selectable text), `pdf_reader.py` will need OCR instead of plain text extraction.
-- The Pinecone index must use dimension 384 and the cosine metric to match the embedding model.
-- The book itself is not included in this repo.
-- For study and reference only. Not a substitute for professional medical advice.
+```bash
+python app.py
+```
+
+Open http://127.0.0.1:5000 and start asking.
+
+## Design decisions
+
+| Choice | Why |
+|---|---|
+| Text extraction instead of OCR | The first version rendered every page to an image and ran Tesseract, which took hours for 637 pages. Selectable-text PDFs extract in minutes with `get_text()`. |
+| 1000-char chunks, 200 overlap | Big enough to keep a full idea together, with overlap so answers aren't cut at chunk boundaries. |
+| `all-MiniLM-L6-v2` | Small, fast, runs on CPU, and produces 384-dim vectors that fit a free Pinecone tier. |
+| Strict "answer from context only" prompt | Reduces hallucination and makes the assistant admit when the book has no answer. |
+| Secrets in `.env` | Keys never touch the repo; `.env.example` documents what is needed. |
+
+## Limitations and ideas for next steps
+
+- Scanned PDFs (no selectable text) need an OCR step in `pdf_reader.py`.
+- Answers don't yet show their source passages or page numbers. Storing page numbers in chunk metadata would enable citations.
+- No chat memory: each question is answered independently.
+- The Pinecone index must use dimension 384 and cosine similarity to match the embedding model.
+
+## Disclaimer
+
+For study and reference only. Not a substitute for professional medical advice.
