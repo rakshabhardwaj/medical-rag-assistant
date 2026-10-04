@@ -42,3 +42,4 @@ for i in range(0, len(chunks), BATCH):
     print(f"Uploaded {min(i + BATCH, len(chunks))}/{len(chunks)}")
 
 print("DONE!")
+

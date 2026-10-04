@@ -8,8 +8,8 @@ from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone
 from groq import Groq
 
-   PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-   GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 INDEX_NAME = "medical-rag"
 GROQ_MODEL = "openai/gpt-oss-120b"
 TOP_K = 4
@@ -59,4 +59,5 @@ def chat():
 
 if __name__ == "__main__":
     app.run(debug=True, use_reloader=False)
+
 
