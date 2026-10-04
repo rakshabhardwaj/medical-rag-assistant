@@ -10,10 +10,10 @@
 :root{
   --bg:#EEF2F1; --panel:#FFFFFF; --ink:#16252B; --muted:#5F7279; --line:#D5DEDD;
   --accent:#0E6B73; --accent-ink:#FFFFFF; --soft:#E1EEEC; --err:#A63A2B;
-  --ui:'Instrument Sans',system-ui,sans-serif; --read:'Newsreader',Georgia,serif;
+  color-scheme:light;--ui:'Instrument Sans',system-ui,sans-serif; --read:'Newsreader',Georgia,serif;
 }
 @media (prefers-color-scheme:dark){
-  :root{--bg:#0F1A1E; --panel:#162329; --ink:#E6EEEE; --muted:#8FA4AA; --line:#25363D; --accent:#4FB3BC; --accent-ink:#06191C; --soft:#1B2E34; --err:#E58B7C;}
+  :root{color-scheme:dark;--bg:#0F1A1E; --panel:#162329; --ink:#E6EEEE; --muted:#8FA4AA; --line:#25363D; --accent:#4FB3BC; --accent-ink:#06191C; --soft:#1B2E34; --err:#E58B7C;}
 }
 *{box-sizing:border-box;margin:0}
 html,body{height:100%}
@@ -38,7 +38,7 @@ header p{font-size:13px;color:var(--muted);margin-top:2px}
 .turn{margin-bottom:26px;max-width:680px}
 .q{font-weight:600;font-size:15px;padding:10px 14px;background:var(--soft);border-radius:12px 12px 12px 2px;display:inline-block}
 .a{margin-top:12px;padding-left:16px;border-left:3px solid var(--accent);font-family:var(--read);font-size:19px;line-height:1.6}
-.a p+p{margin-top:.8em}
+.a div+div{margin-top:.8em}.a ul,.a ol{padding-left:1.4em;margin:.4em 0}.tw{overflow-x:auto;margin:.5em 0}table{border-collapse:collapse;font-family:var(--ui);font-size:14px;line-height:1.45}th,td{border:1px solid var(--line);padding:7px 11px;text-align:left;vertical-align:top}th{background:var(--soft)}.a li{margin:.35em 0}
 .a.err{border-color:var(--err);color:var(--err);font-family:var(--ui);font-size:15px}
 .tools{margin-top:8px;padding-left:19px}
 .tools button{font:inherit;font-size:13px;color:var(--muted);background:none;border:0;cursor:pointer;padding:2px 0}
@@ -103,7 +103,31 @@ const log=document.getElementById('log'),form=document.getElementById('form'),
 let busy=false;
 
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const fmt=t=>esc(t).split(/\n{2,}/).map(p=>'<p>'+p.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>')+'</p>').join('');
+const fmt=t=>{
+  const out=[];let buf=[],mode=null;
+  const flush=()=>{
+    if(!buf.length)return;
+    if(mode==='ul')out.push('<ul>'+buf.map(x=>'<li>'+x+'</li>').join('')+'</ul>');
+    else if(mode==='ol')out.push('<ol>'+buf.map(x=>'<li>'+x+'</li>').join('')+'</ol>');
+    else if(mode==='table'){
+      const rows=buf.filter(r=>!/^[\s|:-]+$/.test(r)).map(r=>r.replace(/^\||\|$/g,'').split('|').map(c=>c.trim()));
+      out.push('<div class="tw"><table>'+rows.map((r,i)=>'<tr>'+r.map(c=>i?'<td>'+c+'</td>':'<th>'+c+'</th>').join('')+'</tr>').join('')+'</table></div>');
+    } else out.push('<div>'+buf.join('<br>')+'</div>');
+    buf=[];mode=null;
+  };
+  esc(t).split('\n').forEach(l=>{
+    const s=l.trim();
+    if(!s){flush();return}
+    let m,k='p',v=s;
+    if(s.startsWith('|'))k='table';
+    else if(m=s.match(/^[*-]\s+(.*)/)){k='ul';v=m[1]}
+    else if(m=s.match(/^\d+\.\s+(.*)/)){k='ol';v=m[1]}
+    if(k!==mode)flush();
+    mode=k;buf.push(v);
+  });
+  flush();
+  return out.join('').replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+};
 
 function scroll(){log.scrollTop=log.scrollHeight}
 
